@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+  <head>
+        <title>Calgary Building Permit Look-Up</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+          integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+          crossorigin=""/>
+
+        <!-- For Date range picker https://github.com/dangrossman/daterangepicker -->
+        <script type="text/javascript" src="https://cdn.jsdelivr.net/jquery/latest/jquery.min.js"></script>
+        <script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+        <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+        <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+
+        <!-- Make sure you put this AFTER Leaflet's CSS -->
+        <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+          integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+          crossorigin=""></script>
+
+        <!-- Overlapping Marker Spiderfier for Leaflet-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/OverlappingMarkerSpiderfier-Leaflet/0.2.6/oms.min.js"></script>
+
+        <!-- Marker Cluster -->
+        <link rel="stylesheet" href="MarkerCluster.css">
+        <link rel="stylesheet" href="MarkerCluster.Default.css">
+        <script type="text/javascript" src="leaflet.markercluster.js"></script>
+
+        <script type="text/javascript">
+        // Define function to add popup to each feature
+        function onEachFeature(feature, marker) {
+             // does this feature have properties?
+             if (feature.properties) {
+                let desc = "Issued Date: " + feature.properties.issueddate + "<br>Work Class Group: " + feature.properties.workclassgroup + "<br>Contractor Name: " + feature.properties.contractorname + "<br>Community Name: " + feature.properties.communityname + "<br>Original Address: " + feature.properties.originaladdress;
+                marker.title = desc;
+             }
+         }
+
+         function generateMarkers(permits, permitMarkers) {
+           permitMarkers.clearLayers();
+            // Add each permit to map
+            var i;
+            for (i=0; i < permits.length; i++) {
+              let permit = {
+                  "type": "Feature",
+                  "properties": permits[i].properties,
+                  "geometry": {
+                      "type": "Point",
+                      "coordinates": [parseFloat(permits[i].properties.longitude), parseFloat(permits[i].properties.latitude)]
+                  }
+              };
+              var marker = L.marker(new L.LatLng(permit.geometry.coordinates[1], permit.geometry.coordinates[0]));
+              onEachFeature(permit, marker);
+              permitMarkers.addLayer(marker);
+              oms.addMarker(marker);  // Tell OverlappingMarkerSpiderfier about the new marker
+            }
+         }
+         </script>
+
+        <h1>Calgary Permit Look-Up</h1>
+    </head>
+  <body>
+         <!-- Define default date range -->
+         <input type="text" name="daterange" value="01/01/2018 - 01/02/2018" /> <br>
+         <!-- Create section for map -->
+         <div id="mapid" style="width: 1000px; height: 600px; position: relative;" ></div> <br>
+
+         <h2>About</h2>
+         <p>Find building permits in Calgary, Alberta. Start by selecting a date range and pressing 'Apply' using the widget above the map.</p>
+
+          <script>
+          // Create map
+          var map = L.map('mapid').setView([51.0447, -114.0719], 13);
+          L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
+           attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+           maxZoom: 18,
+           id: 'mapbox/streets-v11',
+           tileSize: 512,
+           zoomOffset: -1,
+           accessToken: 'pk.eyJ1Ijoiam9zaGMxOTEiLCJhIjoiY2tsYnNvdjNlMzJoazJxcWpuYWxxYm16eiJ9.W7UGozfXTMor1LcXDA0ndw'
+           }).addTo(map);
+          var permitMarkers = L.markerClusterGroup();  // Create layer group for getpermit
+          map.addLayer(permitMarkers);
+
+          // Implement Overlapping Marker Spiderfier, which fixes overlapping markers on map
+          var oms = new OverlappingMarkerSpiderfier(map); // Create oms instance to fix marker overlap
+          var s_popup = new L.Popup();
+          oms.addListener('click', function(marker) {     // Create global listener for marker clicks
+            s_popup.setContent(marker.title);
+            s_popup.setLatLng(marker.getLatLng());
+            map.openPopup(s_popup);
+          });
+          oms.addListener('spiderfy', function(markers) { // Add listener to spiderfy event
+            map.closePopup();
+          });
+           // Create date picker widget
+          $(function() {
+            $('input[name="daterange"]').daterangepicker({
+                opens: 'left'
+              }, function(start, end, label) {  // If new input is submitted
+              console.log("A new date selection was made: " + start.format('YYYY-MM-DD') + ' to ' + end.format('YYYY-MM-DD'));
+
+              // Create URL for get request
+              var url='https://data.calgary.ca/resource/c2es-76ed.geojson?';
+              let query = ['$where=issueddate > \'', start.format('YYYY-MM-DD'), '\' and issueddate < \'', end.format('YYYY-MM-DD'), '\'&$select=issueddate,workclassgroup,contractorname,communityname,originaladdress,latitude,longitude'].join('');
+              url = [url,query].join('');
+
+              // Make get request to OpenCalgary Permit database, then generate map
+              var permits;
+              fetch(url).then(function(response) {
+                return response.json();
+              }).then(function(data) {
+                console.log(data);
+                permits = data["features"];
+                generateMarkers(permits, permitMarkers);
+              }).catch(function(error) {
+                console.log("Error:", error);
+              });
+            });
+          });
+
+          </script>
+    </body>
+</html>
