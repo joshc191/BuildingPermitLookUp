@@ -16,3 +16,8 @@ Overlapping Marker Spiderfier
 
 Leaflet.js
 - Plugin to handle mapping through Javascript
+
+
+
+UPDATE 3/11: Lab 3 Added
+- A layer was added to the map, containing circle markers at each traffic incident that happened in Calgary in 2017.
